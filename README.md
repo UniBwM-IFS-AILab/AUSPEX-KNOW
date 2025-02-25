@@ -1,17 +1,17 @@
 # AUSPEX-KNOW
 
-World **KNOW**ledge**B**ase
+A knowledge base for all AUSPEX modules.
 
 # Build
 
-To build AUSPEX-KNOW you can use colcon build or the predefined alias:
+Build AUSPEX-KNOW using colcon:
 ```
-build_wkb
+colcon build
 ```
 
-# Run WKB
+# Run AUSPEX-KNOW
 
-To run ***WKB***, first run valkey server via predefined alias:
+To run ***AUSPEX-KNOW***, first run valkey server via predefined alias:
 ```
 start_valkey
 ```
@@ -19,11 +19,12 @@ Then run knowledge main via:
 ```
 ros2 run auspex_knowledge knowledge_main
 ```
-This runs all necessary ROS2 nodes for a working ***WKB***.
+This runs all necessary ROS2 nodes for a working knowledge base.
 
-# Connecting to GUI
+# Connect to GUI
 
-For connecting **WKB** to [AUGUR](https://git.unibw.de/angewandte-ki-f-r-dynamische-systeme/AUGUR) the [Rosbridge Suite](https://wiki.ros.org/rosbridge_suite/Tutorials/RunningRosbridge) is necessary.<br>
+For connecting ***AUSPEX-KNOW*** to [AUGUR](https://github.com/UniBwM-IFS-AILab/AUGUR) the [Rosbridge Suite](https://wiki.ros.org/rosbridge_suite/Tutorials/RunningRosbridge) is necessary.<br>
+
 For installation run:
 ```
 sudo apt-get install ros-humble-rosbridge-suite
