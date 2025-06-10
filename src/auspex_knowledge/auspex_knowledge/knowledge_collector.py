@@ -3,33 +3,39 @@ import json
 import os
 from rclpy.node import Node
 import rosidl_runtime_py
+from rclpy.qos import qos_profile_sensor_data
 
-from msg_context.loader import DroneState, PlatformCapabilities, SearchMission
-
+from msg_context.loader import PlatformState, ObjectKnowledge, PlatformCapabilities, SearchMission
 
 class KnowledgeCollector(Node):
     def __init__(self, wkb):
         super().__init__('knowledge_collector')
 
-        self._params_dir =  os.getenv('AUSPEX_PARAMS_PATH')
+        self._params_dir = os.getenv('AUSPEX_PARAMS_PATH')
 
         self.sub_mission = self.create_subscription(
             SearchMission,
             'search_mission',
             self.search_mission_callback,
-            10
+            qos_profile_sensor_data
         )
         self.sub_capabilities = self.create_subscription(
             PlatformCapabilities,
             'platform_capabilities',
             self.platform_capabilities_callback,
-            10
+            qos_profile_sensor_data
         )
         self.sub_drone_state = self.create_subscription(
-            DroneState,
+            PlatformState,
             'drone_state',
             self.drone_state_callback,
-            10
+            qos_profile_sensor_data
+        )
+        self.sub_object_know = self.create_subscription(
+            ObjectKnowledge,
+            'detections',
+            self.object_knowledge_callback,
+            qos_profile_sensor_data
         )
         self._wkb = wkb
 
@@ -73,12 +79,23 @@ class KnowledgeCollector(Node):
         self._wkb.update('platform','$[?(@.platform_id=="' + unique_val + '")]', msg_dict)
         return
 
+    def object_knowledge_callback(self, msg):
+        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
+        unique_val = str(msg_dict['id'])
+        val_exists = self._wkb.exists('object', '$[?(@.id=="' + unique_val + '")]')
+        if not val_exists:
+            self._wkb.insert('object', '$', msg_dict)
+        else:
+            self._wkb.update('object','$[?(@.id=="' + unique_val + '")]', msg_dict)
+        return
+
     def write_history(self):
         answer = self._wkb.query('platform', '$')
         if not answer:
             return
         try:
-            platforms = json.loads(answer[0].replace("'", '"'))
+            json_str = answer[0].replace("'", '"')
+            platforms = json.loads(json_str)
         except (json.JSONDecodeError, TypeError):
             print('error: malformed platform entity')
             return
@@ -104,7 +121,7 @@ class KnowledgeCollector(Node):
         with open(file_path, 'r') as file:
             areas_json = json.load(file)
 
-        self._wkb.update('geographic', '$', {'areas':[]})
+        self._wkb.update('area', '$', [])
 
         for area in areas_json:
-            self._wkb.insert('geographic', '$.areas', area)
+            self._wkb.insert('area', '$', area)

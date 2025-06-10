@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
 import time
 import json
 import rclpy
@@ -71,12 +70,6 @@ class SearchMissionMockPublisher(Node):
         self.get_logger().info('published new search mission')
 
 def main(args=None):
-    argv = sys.argv
-    if len(argv) > 1:
-        filename = argv[1]
-        print('mission file: ' + filename)
-    else:
-        filename = 'example_mission.json'
     rclpy.init(args=args)
 
     params_dir =  os.getenv('AUSPEX_PARAMS_PATH')

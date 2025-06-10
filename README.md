@@ -1,8 +1,10 @@
 # AUSPEX-KNOW
+World **KNOW**ledge Base
 
 A knowledge base for all ***AUSPEX*** modules.
 
-To cite **AUSPEX-KNOW**, please use the following reference: 
+For detailed instructions see the main repository [AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX).
+To cite **AUSPEX-KNOW**, please use the following reference:
 ```
 @article{Doeschl-et-al:2025:AUSPEX,
   author = {Bj{\"o}rn D{\"o}schl and Kai Sommer and Jane Jean Kiam},
@@ -17,7 +19,24 @@ To cite **AUSPEX-KNOW**, please use the following reference:
 
 # Build
 
-Build ***AUSPEX-KNOW*** using colcon:
+To build ***AUSPEX-KNOW*** you can use colcon build or the predefined alias:
 ```
-colcon build
+build_wkb
 ```
+
+# Run WKB
+
+To run ***WKB***, first run valkey server via predefined alias:
+```
+start_valkey
+```
+Then run knowledge main via:
+```
+ros2 run auspex_knowledge knowledge_main
+```
+This runs all necessary ROS2 nodes for a working ***WKB***.
+
+# Connecting to GUI
+For seeing example UAVs in the GUI, you can run a mock publisher:
+```
+ros2 run auspex_knowledge drone_state_mock_publisher

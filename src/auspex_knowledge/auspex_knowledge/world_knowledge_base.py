@@ -26,7 +26,8 @@ class WorldKnowledgeBase(Node):
             return True
 
     def insert(self, collection, path, entity):
-        success = self._valkey.append(collection, path, entity)
+        str_entity = self._stringify(entity)
+        success = self._valkey.append(collection, path, str_entity)
         if success:
             self._publish_change(collection, path)
         return success
@@ -57,3 +58,11 @@ class WorldKnowledgeBase(Node):
         msg.collection = collection
         msg.path = path
         self._publisher.publish(msg)
+
+    def _stringify(self, entity):
+        if isinstance(entity, dict):
+            return {key: self._stringify(value) for key, value in entity.items()}
+        elif isinstance(entity, list):
+            return [self._stringify(item) for item in entity]
+        else:
+            return str(entity)

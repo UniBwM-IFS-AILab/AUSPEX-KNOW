@@ -16,7 +16,6 @@ setup(
     maintainer_email='kai.sommer@unibw.de',
     description='AUSPEX World Knowledge Base',
     license='MIT',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'drone_state_mock_publisher = auspex_knowledge.drone_state_mock_publisher:main',

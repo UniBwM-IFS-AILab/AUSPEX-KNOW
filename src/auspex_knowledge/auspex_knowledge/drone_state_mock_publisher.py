@@ -9,14 +9,14 @@ from geographic_msgs.msg import GeoPoint
 from tf_transformations import quaternion_from_euler
 from auspex_msgs.srv import InsertKnowledge
 
-from msg_context.loader import DroneState, SensorMode
+from msg_context.loader import PlatformState, SensorMode
 
 
 class DroneStateMockPublisher(Node):
     def __init__(self):
         super().__init__('drone_state_mock_publisher')
 
-        self._state_pub = self.create_publisher(DroneState, '/drone_state', 10)
+        self._state_pub = self.create_publisher(PlatformState, '/drone_state', 10)
         self._insert_client = self.create_client(InsertKnowledge, '/insert_knowledge')
 
         self._platform_id1 = 'drone1'
@@ -80,7 +80,7 @@ class DroneStateMockPublisher(Node):
             self.lon_drone2 -= 0.000010
             self.platform_status_drone2 = 'flying'
 
-        msg0 = DroneState()
+        msg0 = PlatformState()
         msg0.platform_id = self._platform_id1
         msg0.team_id = 'team1'
         msg0.header.stamp = self.get_clock().now().to_msg()
@@ -104,7 +104,7 @@ class DroneStateMockPublisher(Node):
 
         self._state_pub.publish(msg0)
 
-        msg1 = DroneState()
+        msg1 = PlatformState()
         msg1.platform_id = self._platform_id2
         msg1.team_id = 'team1'
         msg1.header.stamp = self.get_clock().now().to_msg()

@@ -8,7 +8,9 @@ class ValkeyClient:
         self._redis_client = redis.Redis(
             host='localhost',
             port=6379,
-            decode_responses=True
+            decode_responses=True,
+            password='auspex_db',
+            socket_connect_timeout=10
         )
         self._is_db_connected = False
         try:
@@ -19,7 +21,7 @@ class ValkeyClient:
             return
 
         self.drop()
-        self._collections = ['platform','capabilities','plan','mission','object','geographic','config','history']
+        self._collections = ['platform','capabilities','plan','mission','object','area','config','history','goal']
         for collection in self._collections:
             self._redis_client.json().set(collection, '$', [])
 
