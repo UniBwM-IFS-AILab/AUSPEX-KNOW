@@ -5,7 +5,7 @@ from rclpy.node import Node
 import rosidl_runtime_py
 from rclpy.qos import qos_profile_sensor_data
 
-from msg_context.loader import PlatformState, ObjectKnowledge, PlatformCapabilities, SearchMission
+from msg_context.loader import PlatformState, ObjectKnowledge, PlatformCapabilities, SearchMission, ClientInfo
 
 class KnowledgeCollector(Node):
     def __init__(self, wkb):
@@ -27,7 +27,7 @@ class KnowledgeCollector(Node):
         )
         self.sub_drone_state = self.create_subscription(
             PlatformState,
-            'drone_state',
+            'platform_state',
             self.drone_state_callback,
             qos_profile_sensor_data
         )
@@ -35,6 +35,12 @@ class KnowledgeCollector(Node):
             ObjectKnowledge,
             'detections',
             self.object_knowledge_callback,
+            qos_profile_sensor_data
+        )
+        self.sub_clients = self.create_subscription(
+            ClientInfo,
+            'clients',
+            self.clients_callback,
             qos_profile_sensor_data
         )
         self._wkb = wkb
@@ -87,6 +93,16 @@ class KnowledgeCollector(Node):
             self._wkb.insert('object', '$', msg_dict)
         else:
             self._wkb.update('object','$[?(@.id=="' + unique_val + '")]', msg_dict)
+        return
+
+    def clients_callback(self, msg):
+        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
+        unique_val = str(msg_dict['platform_id'])
+        val_exists = self._wkb.exists('client', '$[?(@.platform_id=="' + unique_val + '")]')
+        if not val_exists:
+            self._wkb.insert('client', '$', msg_dict)
+        else:
+            self._wkb.update('client','$[?(@.platform_id=="' + unique_val + '")]', msg_dict)
         return
 
     def write_history(self):

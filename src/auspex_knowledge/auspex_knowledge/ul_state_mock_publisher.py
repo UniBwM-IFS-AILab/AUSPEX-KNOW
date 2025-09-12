@@ -15,7 +15,7 @@ class UlStateMockPublisher(Node):
     def __init__(self):
         super().__init__('ul_state_mock_publisher')
 
-        self._state_pub = self.create_publisher(PlatformState, '/drone_state', 10)
+        self._state_pub = self.create_publisher(PlatformState, '/platform_state', 10)
         self._caps_pub = self.create_publisher(PlatformCapabilities, '/platform_capabilities', 10)
         self._insert_client = self.create_client(InsertKnowledge, '/insert_knowledge')
 

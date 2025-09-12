@@ -16,7 +16,7 @@ class DroneStateMockPublisher(Node):
     def __init__(self):
         super().__init__('drone_state_mock_publisher')
 
-        self._state_pub = self.create_publisher(PlatformState, '/drone_state', 10)
+        self._state_pub = self.create_publisher(PlatformState, '/platform_state', 10)
         self._insert_client = self.create_client(InsertKnowledge, '/insert_knowledge')
 
         self._platform_id1 = 'drone1'
@@ -37,9 +37,6 @@ class DroneStateMockPublisher(Node):
 
     def register_platforms(self):
         self._executor = SingleThreadedExecutor()
-        if not self._insert_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('error: no connection to knowledge service')
-            return False
 
         insert_request = InsertKnowledge.Request()
         insert_request.collection = 'platform'

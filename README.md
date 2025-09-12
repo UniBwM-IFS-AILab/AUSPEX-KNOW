@@ -1,10 +1,10 @@
 # AUSPEX-KNOW
-World **KNOW**ledge Base
+World **Know**ledge Base
 
 A knowledge base for all ***AUSPEX*** modules.
 
-For detailed instructions see the main repository [AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX).
-To cite **AUSPEX-KNOW**, please use the following reference:
+For detailed instructions see the main repository ***[AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX)***.
+To cite ***AUSPEX-KNOW***, please use the following reference:
 ```
 @article{Doeschl-et-al:2025:AUSPEX,
   author = {Bj{\"o}rn D{\"o}schl and Kai Sommer and Jane Jean Kiam},
@@ -17,26 +17,41 @@ To cite **AUSPEX-KNOW**, please use the following reference:
 }
 ```
 
+# Docker Container
+
+Start the docker container ***[AUSPEX-VASA](https://github.com/UniBwM-IFS-AILab/AUSPEX-VASA)*** via:
+```
+runvasa
+```
+For attaching a second terminal to this container use:
+```
+vasabash
+```
+
 # Build
 
 To build ***AUSPEX-KNOW*** you can use colcon build or the predefined alias:
 ```
-build_wkb
+build_know
 ```
+> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
 
-# Run WKB
+# Run
 
-To run ***WKB***, first run valkey server via predefined alias:
+First run valkey server:
 ```
-start_valkey
+run_valkey
 ```
-Then run knowledge main via:
+Then run ***AUSPEX-KNOW*** via:
 ```
-ros2 run auspex_knowledge knowledge_main
+run_know
 ```
-This runs all necessary ROS2 nodes for a working ***WKB***.
+> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
 
-# Connecting to GUI
-For seeing example UAVs in the GUI, you can run a mock publisher:
+# Example data
+
+For mocking UAV example data, you can run:
 ```
 ros2 run auspex_knowledge drone_state_mock_publisher
+```
+> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.

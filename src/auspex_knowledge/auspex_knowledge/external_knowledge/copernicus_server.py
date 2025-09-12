@@ -6,6 +6,8 @@ import rasterio
 import numpy as np
 import os
 import io
+import requests
+from requests.exceptions import ConnectionError, Timeout, RequestException
 
 from auspex_msgs.srv import GetAltitude
 from auspex_msgs.srv import GetHeighestPoint
@@ -16,18 +18,24 @@ class CopernicusServer(Node):
     def __init__(self):
         super().__init__('copernicus_server')
         self.client_id = os.getenv('COPERNICUS_CLIENT_ID')
-        self.client_secret = os.getenv('COPERNICUS_CLIENT_SK') 
+        self.client_secret = os.getenv('COPERNICUS_CLIENT_SK')
 
         if not self.client_id or not self.client_secret:
-            print('error: copernicus client id and secret key not defined in env variables.')
+            self.get_logger().error('Copernicus client id and secret key not defined in env variables.')
             return
 
         client = BackendApplicationClient(client_id=self.client_id)
         self.oauth = OAuth2Session(client=client)
 
-        self.token = self.oauth.fetch_token(token_url='https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token', client_secret=self.client_secret, include_client_id=True)
+        # Initialize token with error handling
+        self.token = None
+        self._fetch_token_with_retry()
 
-        self.oauth.get("https://sh.dataspace.copernicus.eu/configuration/v1/wms/instances")
+        # Test connection with error handling
+        try:
+            self.oauth.get("https://sh.dataspace.copernicus.eu/configuration/v1/wms/instances")
+        except Exception as e:
+            self.get_logger().warning(f'Initial connection test failed: {e}')
 
         self.get_altitude_server = self.create_service(GetAltitude, '/auspex_get_altitude', self.get_altitude_server_callback)
         self.get_heighestPoint_server = self.create_service(GetHeighestPoint, '/auspex_get_heighest_point', self.get_heighest_point_server_callback)
@@ -36,65 +44,118 @@ class CopernicusServer(Node):
         timer_period = 50  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-        print('copernicus server up and runnning...')
+        self.get_logger().info('Copernicus server up and running...')
 
     def timer_callback(self):
-        print('fetching new token...')
-        self.token = self.oauth.fetch_token(token_url='https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token', client_secret=self.client_secret, include_client_id=True)
+        self.get_logger().info('Refreshing token...')
+        self._fetch_token_with_retry()
+
+    def _fetch_token_with_retry(self, max_retries=3):
+        """Fetch token with retry logic and error handling"""
+        for attempt in range(max_retries):
+            try:
+                self.token = self.oauth.fetch_token(
+                    token_url='https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token',
+                    client_secret=self.client_secret,
+                    include_client_id=True,
+                    timeout=30  # Add timeout
+                )
+                self.get_logger().info('Token refreshed successfully')
+                return True
+            except (ConnectionError, Timeout, RequestException) as e:
+                self.get_logger().warning(f'Token refresh attempt {attempt + 1}/{max_retries} failed: {e}')
+                if attempt < max_retries - 1:
+                    # Wait before retry (exponential backoff)
+                    import time
+                    time.sleep(2 ** attempt)
+                else:
+                    self.get_logger().error('All token refresh attempts failed. Services may be unavailable.')
+            except Exception as e:
+                self.get_logger().error(f'Unexpected error during token refresh: {e}')
+                break
+        return False
 
     def get_altitude_server_callback(self, request, response):
-        print('got a request...')
-        latitude = request.gps_position.latitude
-        longitude = request.gps_position.longitude
-        resolution =  request.resolution
+        self.get_logger().info('Received altitude request')
+        try:
+            if not self.token:
+                self.get_logger().warning('No valid token available')
+                response.success = False
+                return response
 
-        # define a very small bounding box around the point
-        delta = 0.000001
-        bounding_box = [longitude - delta, latitude - delta, longitude + delta, latitude + delta]
+            latitude = request.gps_position.latitude
+            longitude = request.gps_position.longitude
+            resolution = request.resolution
 
-        print(f'computing the altitude amsl for resolution: {resolution}')
-        elevation = self._get_mean_elevation(self.oauth, bounding_box, resolution)
-        print(f'computed elevation = {elevation}')
-        if elevation != -1:
-            response.success = True
-            response.altitude_amsl = float(elevation)
-        print('finished.')
+            # define a very small bounding box around the point
+            delta = 0.000001
+            bounding_box = [longitude - delta, latitude - delta, longitude + delta, latitude + delta]
+
+            self.get_logger().info(f'Computing altitude AMSL for resolution: {resolution}')
+            elevation = self._get_mean_elevation(self.oauth, bounding_box, resolution)
+            self.get_logger().info(f'Computed elevation = {elevation}')
+
+            if elevation != -1:
+                response.success = True
+                response.altitude_amsl = float(elevation)
+            else:
+                response.success = False
+                self.get_logger().warning('Failed to compute elevation')
+        except Exception as e:
+            self.get_logger().error(f'Error in altitude service: {e}')
+            response.success = False
+
+        self.get_logger().info('Altitude request finished')
         return response
 
     def get_heighest_point_server_callback(self, request, response):
-        if len(request.region_bb) != 2:
-            print('for the bounding box two points have to be defined')
-            return response
+        try:
+            if not self.token:
+                self.get_logger().warning('No valid token available')
+                response.success = False
+                return response
 
-        bounding_box = [request.region_bb[0].longitude,  request.region_bb[0].latitude, request.region_bb[1].longitude, request.region_bb[1].latitude]  # [minLon, minLat, maxLon, maxLat]
+            if len(request.region_bb) != 2:
+                self.get_logger().warning('For the bounding box two points have to be defined')
+                response.success = False
+                return response
 
-        resolution = request.resolution # meters
-        tile_size = request.tile_size   # square meters
+            bounding_box = [request.region_bb[0].longitude,  request.region_bb[0].latitude, request.region_bb[1].longitude, request.region_bb[1].latitude]  # [minLon, minLat, maxLon, maxLat]
 
-        print(f'computing the heighest point for resolution: {resolution} and tile_size {tile_size}')
+            resolution = request.resolution # meters
+            tile_size = request.tile_size   # square meters
 
-        if tile_size == 0:
-            tile_size = 500
+            self.get_logger().info(f'Computing highest point for resolution: {resolution} and tile_size {tile_size}')
 
-        if tile_size >1450:
-            tile_size = 1400
+            if tile_size == 0:
+                tile_size = 500
 
-        tiles = self._split_bbox(bounding_box, tile_size)
-        if len(tiles) < 0:
-            print('region too small..')
+            if tile_size > 1450:
+                tile_size = 1400
 
-        max_elevation_overall = -np.inf
+            tiles = self._split_bbox(bounding_box, tile_size)
+            if len(tiles) < 1:
+                self.get_logger().warning('Region too small or no tiles generated')
+                response.success = False
+                return response
 
-        for tile_bbox in tiles:
-            max_elevation = self._get_max_elevation_from_tile(self.oauth, tile_bbox, resolution)
+            max_elevation_overall = -np.inf
 
-            if max_elevation > max_elevation_overall:
-                max_elevation_overall = max_elevation
+            for tile_bbox in tiles:
+                max_elevation = self._get_max_elevation_from_tile(self.oauth, tile_bbox, resolution)
+                if max_elevation > max_elevation_overall:
+                    max_elevation_overall = max_elevation
 
+            if max_elevation_overall != -np.inf:
+                response.success = True
+                response.altitude_amsl = float(max_elevation_overall)
+            else:
+                response.success = False
+                self.get_logger().warning('Failed to compute highest point')
 
-        if max_elevation_overall != -np.inf:
-            response.success = True
-            response.altitude_amsl = float(max_elevation_overall)
+        except Exception as e:
+            self.get_logger().error(f'Error in highest point service: {e}')
+            response.success = False
 
         return response
 
@@ -136,8 +197,8 @@ class CopernicusServer(Node):
                 ]
             },
             "output": {
-                "resx": resolution,  
-                "resy": resolution,  
+                "resx": resolution,
+                "resy": resolution,
                 "responses": [
                     {
                         "identifier": "default",
@@ -151,16 +212,21 @@ class CopernicusServer(Node):
         }
 
         url = 'https://sh.dataspace.copernicus.eu/api/v1/process'
-        response = oauth.post(url, json=request)
-        if response.status_code == 200:
-            with io.BytesIO(response.content) as tiff_file:
-                with rasterio.open(tiff_file) as src:
-                    band = src.read(1)
-                    band = np.ma.masked_invalid(band)
-                    elevation = band[0, 0]
-                    return elevation
-        else:
-            print(f'request failed with status code {response.status_code}: {response.text}')
+        try:
+            response = oauth.post(url, json=request, timeout=60)
+            if response.status_code == 200:
+                with io.BytesIO(response.content) as tiff_file:
+                    with rasterio.open(tiff_file) as src:
+                        band = src.read(1)
+                        band = np.ma.masked_invalid(band)
+                        elevation = band[0, 0]
+                        return elevation
+            else:
+                print(f'Request failed with status code {response.status_code}: {response.text}')
+        except (ConnectionError, Timeout, RequestException) as e:
+            print(f'Network error during elevation request: {e}')
+        except Exception as e:
+            print(f'Unexpected error during elevation request: {e}')
         return -1
 
     def _get_max_elevation_from_tile(self, oauth, tile_bbox, resolution):
@@ -211,17 +277,21 @@ class CopernicusServer(Node):
         }
 
         url = 'https://sh.dataspace.copernicus.eu/api/v1/process'
-        response = oauth.post(url, json=request)
-
-        if response.status_code == 200:
-            with io.BytesIO(response.content) as tiff_file:
-                with rasterio.open(tiff_file) as src:
-                    band = src.read(1)
-                    band = np.ma.masked_invalid(band)
-                    return band.max()
-        else:
-            print(f'request failed for tile {tile_bbox} with status code {response.status_code}: {response.text}')
-            return -np.inf
+        try:
+            response = oauth.post(url, json=request, timeout=60)
+            if response.status_code == 200:
+                with io.BytesIO(response.content) as tiff_file:
+                    with rasterio.open(tiff_file) as src:
+                        band = src.read(1)
+                        band = np.ma.masked_invalid(band)
+                        return band.max()
+            else:
+                print(f'Request failed for tile {tile_bbox} with status code {response.status_code}: {response.text}')
+        except (ConnectionError, Timeout, RequestException) as e:
+            print(f'Network error for tile {tile_bbox}: {e}')
+        except Exception as e:
+            print(f'Unexpected error for tile {tile_bbox}: {e}')
+        return -np.inf
 
     def _split_bbox(self, bbox, tile_size):
         min_lon, min_lat, max_lon, max_lat = bbox
@@ -247,10 +317,23 @@ class CopernicusServer(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    copernicus_server = CopernicusServer()
-    rclpy.spin(copernicus_server) 
-    copernicus_server.destroy_node()
-    rclpy.shutdown()
+    try:
+        copernicus_server = CopernicusServer()
+        if copernicus_server.client_id and copernicus_server.client_secret:
+            print('Copernicus server initialized successfully')
+            rclpy.spin(copernicus_server)
+        else:
+            print('Failed to initialize Copernicus server due to missing credentials')
+    except KeyboardInterrupt:
+        print('Shutting down Copernicus server...')
+    except Exception as e:
+        print(f'Unexpected error in main: {e}')
+    finally:
+        try:
+            copernicus_server.destroy_node()
+        except:
+            pass
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

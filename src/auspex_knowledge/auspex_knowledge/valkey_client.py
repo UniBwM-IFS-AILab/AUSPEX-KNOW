@@ -21,7 +21,7 @@ class ValkeyClient:
             return
 
         self.drop()
-        self._collections = ['platform','capabilities','plan','mission','object','area','config','history','goal']
+        self._collections = ['platform','capabilities','plan','mission','object','area','config','history','goal','client']
         for collection in self._collections:
             self._redis_client.json().set(collection, '$', [])
 
