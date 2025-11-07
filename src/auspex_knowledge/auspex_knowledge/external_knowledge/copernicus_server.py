@@ -100,6 +100,7 @@ class CopernicusServer(Node):
                 response.altitude_amsl = float(elevation)
             else:
                 response.success = False
+                response.altitude_amsl = float(elevation)
                 self.get_logger().warning('Failed to compute elevation')
         except Exception as e:
             self.get_logger().error(f'Error in altitude service: {e}')
@@ -227,7 +228,7 @@ class CopernicusServer(Node):
             print(f'Network error during elevation request: {e}')
         except Exception as e:
             print(f'Unexpected error during elevation request: {e}')
-        return -1
+        return -1.0
 
     def _get_max_elevation_from_tile(self, oauth, tile_bbox, resolution):
         evalscript = '''

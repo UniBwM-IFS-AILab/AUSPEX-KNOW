@@ -6,7 +6,7 @@ import rclpy
 from rclpy.node import Node
 from geographic_msgs.msg import GeoPoint
 
-from msg_context.loader import Area, SearchMission
+from auspex_msgs.msg import Area, SearchMission
 
 
 class SearchMissionMockPublisher(Node):
@@ -24,14 +24,21 @@ class SearchMissionMockPublisher(Node):
         self._msg = SearchMission()
         self._msg.team_id = self._mission_dict['team_id']
         self._msg.platform_class.value = int(self._mission_dict['platform_class']['value'])
+        self._msg.mission_status = "UNPROCESSED"
 
-        self._msg.search_area = Area()
-        self._msg.search_area.type = int(self._mission_dict['search_area']['type'])
-        self._msg.search_area.description = self._mission_dict['search_area']['description']
-        self._msg.search_area.points = []
-        search_area_points = self._mission_dict['search_area']['points']
-        for point in search_area_points:
-            self._msg.search_area.points.append(GeoPoint(latitude=float(point['latitude']), longitude=float(point['longitude']), altitude=float(point['altitude'])))
+        self._msg.search_areas = []
+
+        for search_area in self._mission_dict['search_areas']:
+            area = Area()
+            area.type = int(search_area['type'])
+            area.description = search_area['description']
+            area.points = []
+
+            search_area_points = search_area['points']
+            for point in search_area_points:
+                area.points.append(GeoPoint(latitude=float(point['latitude']), longitude=float(point['longitude']), altitude=float(point['altitude'])))
+
+            self._msg.search_areas.append(area)
 
         self._msg.no_fly_zones = []
 
@@ -49,9 +56,10 @@ class SearchMissionMockPublisher(Node):
         self._msg.min_height = int(self._mission_dict['min_height'])
         self._msg.desired_ground_dist = int(self._mission_dict['desired_ground_dist'])
         starting_point = self._mission_dict['starting_point']
-        self._msg.starting_point = GeoPoint(latitude=float(starting_point['latitude']), longitude=float(starting_point['latitude']), altitude=float(starting_point['latitude']))
+        self._msg.starting_point = GeoPoint(latitude=float(starting_point['latitude']), longitude=float(starting_point['longitude']), altitude=float(starting_point['altitude']))
 
         self._msg.mission_goal = self._mission_dict['mission_goal']
+        self._msg.target_objects = self._mission_dict['target_objects']
 
         self._msg.pois = []
         self._msg.prio_areas = []
@@ -76,8 +84,8 @@ def main(args=None):
     file_path = os.path.join(params_dir, 'mission', 'example_mission.json')
 
     searchMissionMockPublisher = SearchMissionMockPublisher()
-    time.sleep(3)
     searchMissionMockPublisher.load_mission_file(file_path)
+    time.sleep(2)  # wait for subscribers to connect
     searchMissionMockPublisher.publish()
     searchMissionMockPublisher.destroy_node()
     rclpy.shutdown()

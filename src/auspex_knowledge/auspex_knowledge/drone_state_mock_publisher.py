@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 import math
-import os
 import rclpy
-from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from geometry_msgs.msg import Point, Quaternion
 from geographic_msgs.msg import GeoPoint
 from tf_transformations import quaternion_from_euler
-from auspex_msgs.srv import InsertKnowledge
-
-from msg_context.loader import PlatformState, SensorMode
+from auspex_msgs.msg import PlatformState, SensorMode
 
 
 class DroneStateMockPublisher(Node):
@@ -17,7 +13,6 @@ class DroneStateMockPublisher(Node):
         super().__init__('drone_state_mock_publisher')
 
         self._state_pub = self.create_publisher(PlatformState, '/platform_state', 10)
-        self._insert_client = self.create_client(InsertKnowledge, '/insert_knowledge')
 
         self._platform_id1 = 'drone1'
         self.lat_drone1 = 48.080934
@@ -35,31 +30,11 @@ class DroneStateMockPublisher(Node):
 
         self._msg_counter = 0
 
-    def register_platforms(self):
-        self._executor = SingleThreadedExecutor()
-
-        insert_request = InsertKnowledge.Request()
-        insert_request.collection = 'platform'
-        insert_request.path = '$'
-        insert_request.entity = '{"platform_id":"'+ self._platform_id1 + '"}'
-        future = self._insert_client.call_async(insert_request)
-        rclpy.spin_until_future_complete(self, future, self._executor)
-        if not future.result().success:
-            return False
-
-        insert_request = InsertKnowledge.Request()
-        insert_request.collection = 'platform'
-        insert_request.path = '$'
-        insert_request.entity = '{"platform_id":"'+ self._platform_id2 + '"}'
-        future = self._insert_client.call_async(insert_request)
-        rclpy.spin_until_future_complete(self, future, self._executor)
-        return future.result().success
-
     def publish_caps(self):
         #TODO
         return
 
-    def start_state_pub(self):
+    def start_pub(self):
         self.publish_timer = self.create_timer(0.1, self.publish_drone_state)
 
     def publish_drone_state(self):
@@ -132,14 +107,13 @@ def main(args=None):
     rclpy.init(args=args)
 
     droneStateMockPublisher = DroneStateMockPublisher()
-
-    if droneStateMockPublisher.register_platforms():
-        print('register platform successful...')
-        #droneStateMockPublisher.publish_caps()
-        droneStateMockPublisher.start_state_pub()
+    #droneStateMockPublisher.publish_caps()
+    droneStateMockPublisher.start_pub()
+    try:
         rclpy.spin(droneStateMockPublisher)
-    else:
-        print('register platform not successful...')
+    except KeyboardInterrupt:
+        pass
+
     droneStateMockPublisher.destroy_node()
     rclpy.shutdown()
 

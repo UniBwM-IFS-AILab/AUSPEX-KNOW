@@ -8,7 +8,7 @@ from geographic_msgs.msg import GeoPoint
 from tf_transformations import quaternion_from_euler
 from auspex_msgs.srv import InsertKnowledge
 
-from msg_context.loader import PlatformState, PlatformCapabilities, SensorCapabilities, SensorMode
+from auspex_msgs.msg import PlatformState, PlatformCapabilities, SensorCapabilities, SensorMode
 
 
 class UlStateMockPublisher(Node):

@@ -23,6 +23,7 @@ setup(
             'search_mission_mock_publisher = auspex_knowledge.search_mission_mock_publisher:main',
             'knowledge_main = auspex_knowledge.knowledge_main:main',
             'copernicus_server = auspex_knowledge.external_knowledge.copernicus_server:main',
+            'demo_object_publisher = auspex_knowledge.demo_object_publisher:main',
         ],
     },
 )

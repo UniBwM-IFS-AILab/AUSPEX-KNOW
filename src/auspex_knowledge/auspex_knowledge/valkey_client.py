@@ -20,22 +20,18 @@ class ValkeyClient:
             print('error: failed to connect to valkey')
             return
 
-        self.drop()
-        self._collections = ['platform','capabilities','plan','mission','object','area','config','history','goal','client']
-        for collection in self._collections:
-            self._redis_client.json().set(collection, '$', [])
-
-    def _check_db_preconditions(self, collection):
+    def _check_db_preconditions(self):
         if not self._is_db_connected:
             print('error: not connected to valkey')
             return False
-        if collection not in self._collections:
-            print('error: unknown collection key')
-            return False
         return True
 
+    def create_collection(self, name):
+        if not self._redis_client.exists(name):
+            self._redis_client.json().set(name, '$', [])
+
     def append(self, collection, path, entity):
-        if not self._check_db_preconditions(collection):
+        if not self._check_db_preconditions():
             return False
         try:
             self._redis_client.json().arrappend(collection, path, entity)
@@ -45,7 +41,7 @@ class ValkeyClient:
             return False
 
     def query(self, collection, path):
-        if not self._check_db_preconditions(collection):
+        if not self._check_db_preconditions():
             return None
         try:
             result = self._redis_client.json().get(collection, path)
@@ -55,7 +51,7 @@ class ValkeyClient:
             return None
 
     def set(self, collection, path, value):
-        if not self._check_db_preconditions(collection):
+        if not self._check_db_preconditions():
             return False
         try:
             self._redis_client.json().set(collection, path, value)
@@ -65,7 +61,7 @@ class ValkeyClient:
             return False
 
     def delete(self, collection, path):
-        if not self._check_db_preconditions(collection):
+        if not self._check_db_preconditions():
             return False
         try:
             self._redis_client.json().delete(collection, path)
@@ -74,10 +70,18 @@ class ValkeyClient:
             print('error: ', response_error, collection, path)
             return False
 
-    def save_to_file(self, filename):
+    def save(self, filename):
+        cursor = 0
+        collections = []
+        while True:
+            cursor, keys = self._redis_client.scan(cursor=cursor, match="*")
+            collections.extend(keys)
+            if cursor == 0:
+                break
+
         db_dump = {}
 
-        for collection in self._collections:
+        for collection in collections:
             db_dump[collection] = self.query(collection, '$')
 
         with open(filename, 'w') as file:
@@ -94,8 +98,3 @@ class ValkeyClient:
             self._redis_client.close()
         except Exception as e:
             print('error: ', e)
-
-    def __del__(self):
-        self.save_to_file('wk.json')
-        self.drop()
-        self.disconnect()

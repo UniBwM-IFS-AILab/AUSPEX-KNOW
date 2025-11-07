@@ -46,12 +46,7 @@ class WorldKnowledgeServer(Node):
             print('error: not a valid json')
             response.success = False
             return response
-
-        exists = self._wkb.exists(request.collection, request.path)
-        if not exists:
-            response.success = self._wkb.insert(request.collection, '$', entity)
-        else:
-            response.success = self._wkb.update(request.collection, request.path, entity)
+        response.success = self._wkb.upsert(request.collection, request.path, entity)
         return response
 
     def delete_knowledge(self, request, response):
