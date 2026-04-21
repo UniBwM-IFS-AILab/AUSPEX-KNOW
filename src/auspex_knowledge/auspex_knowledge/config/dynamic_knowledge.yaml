@@ -1,0 +1,61 @@
+frames:
+  uav:
+    id_field: "platform_id"
+    topics:
+      platform_state:
+        mode: "single"
+        topic: "/platform_state"
+        msg_type: "auspex_msgs/msg/PlatformState"
+        ttl: 10
+        qos_profile: "best_effort"
+      platform_capabilities:
+        mode: "single"
+        topic: "/platform_capabilities"
+        msg_type: "auspex_msgs/msg/PlatformCapabilities"
+        ttl: 0
+
+  object:
+    id_field: "object_id"
+    topics:
+      object_observation:
+        mode: "multiple"
+        variant_key: "platform_id"
+        topic: "/object_observation"
+        msg_type: "auspex_msgs/msg/ObjectObservation"
+        ttl: 0
+
+  mission:
+    id_field: "team_id"
+    topics:
+      mission_description:
+        mode: "single"
+        topic: "/mission_description"
+        msg_type: "auspex_msgs/msg/MissionDescription"
+        ttl: 0
+
+  goal:
+    id_field: "goal_id"
+    topics:
+      data:
+        mode: "single"
+        topic: "/goals"
+        msg_type: "auspex_msgs/msg/Goal"
+        ttl: 0
+
+  constraint:
+    id_field: "constraint_id"
+    topics:
+      data:
+        mode: "single"
+        topic: "/constraints"
+        msg_type: "auspex_msgs/msg/Constraint"
+        ttl: 0
+
+  area:
+    id_field: "description"
+    topics:
+      data:
+        mode: "single"
+        topic: "/areas"
+        msg_type: "auspex_msgs/msg/Area"
+        ttl: 0

@@ -1,0 +1,8 @@
+frames:
+  area:
+    id_field: "name"
+    file: "/root/AUSPEX/params/geographic/areas/areas.json"
+
+  planner_config:
+    id_field: "team_id"
+    file: "/root/AUSPEX/params/config/planner_config.json"

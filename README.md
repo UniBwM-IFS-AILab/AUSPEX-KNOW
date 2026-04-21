@@ -1,10 +1,9 @@
 # AUSPEX-KNOW
-World **Know**ledge Base
+A **Know**ledge base for multi-UAV decision-making frameworks.
 
-A knowledge base for all ***AUSPEX*** modules.
+For detailed installation and setup instructions of the complete framework, see the main repository **[AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX)**.
 
-For detailed instructions see the main repository ***[AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX)***.
-To cite ***AUSPEX-KNOW***, please use the following reference:
+To cite **AUSPEX-KNOW**, please use the following reference:
 ```
 @article{10.3389/frobt.2025.1583479,
    AUTHOR={D{\"o}schl, Bj{\"o}rn  and Sommer, Kai  and Kiam, Jane Jean },
@@ -20,39 +19,37 @@ To cite ***AUSPEX-KNOW***, please use the following reference:
 
 # Docker Container
 
-Start the docker container ***[AUSPEX-VASA](https://github.com/UniBwM-IFS-AILab/AUSPEX-VASA)*** via:
+Start the docker container **[AUSPEX-VASA](https://github.com/UniBwM-IFS-AILab/AUSPEX-VASA)** via:
 ```
-runvasa
+vasa_shell
 ```
 For attaching a second terminal to this container use:
 ```
-vasabash
+vasa_shell
 ```
 
 # Build
 
-To build ***AUSPEX-KNOW*** you can use colcon build or the predefined alias:
+To build **AUSPEX-KNOW** you can use colcon build or the predefined alias:
 ```
-build_know
+know_build
 ```
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.
 
 # Run
 
 First run valkey server:
 ```
-run_valkey
+valkey_run
 ```
-Then run ***AUSPEX-KNOW*** via:
+Then run **AUSPEX-KNOW** via:
 ```
-run_know
+know_run
 ```
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.
 
 # Example data
 
-For mocking UAV example data, you can run:
-```
-ros2 run auspex_knowledge drone_state_mock_publisher
-```
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+For example data, you can use the mock publishers in the *AUSPEX-KNOW\src\auspex_knowledge\auspex_knowledge\mock* folder.
+
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.

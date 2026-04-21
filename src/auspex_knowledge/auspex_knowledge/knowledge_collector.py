@@ -1,181 +1,84 @@
 #!/usr/bin/env python3
-import json
-import os
-from rclpy.node import Node
-import rosidl_runtime_py
-from rclpy.qos import qos_profile_sensor_data
+import functools
+import importlib
+import yaml
 
-from auspex_msgs.msg import PlatformState, ObjectKnowledge, PlatformCapabilities, SearchMission
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from rosidl_runtime_py.convert import message_to_ordereddict
+
+from auspex_knowledge.knowledge_base import KnowledgeBase
+
 
 class KnowledgeCollector(Node):
-    def __init__(self, wkb):
-        super().__init__('knowledge_collector')
+    def __init__(self):
+        super().__init__("knowledge_collector")
 
-        self._params_dir = os.getenv('AUSPEX_PARAMS_PATH')
+        self.config_file = "/root/AUSPEX/AUSPEX-KNOW/src/auspex_knowledge/auspex_knowledge/config/dynamic_knowledge.yaml"
 
-        self.sub_mission = self.create_subscription(
-            SearchMission,
-            'search_mission',
-            self.search_mission_callback,
-            qos_profile_sensor_data
-        )
-        self.sub_capabilities = self.create_subscription(
-            PlatformCapabilities,
-            'platform_capabilities',
-            self.platform_capabilities_callback,
-            qos_profile_sensor_data
-        )
-        self.sub_drone_state = self.create_subscription(
-            PlatformState,
-            'platform_state',
-            self.drone_state_callback,
-            qos_profile_sensor_data
-        )
-        self.sub_object_know = self.create_subscription(
-            ObjectKnowledge,
-            'detections',
-            self.object_knowledge_callback,
-            qos_profile_sensor_data
+        self._know_base = KnowledgeBase()
+
+        self._qos_profile_reliable = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
         )
 
-        self._wkb = wkb
+        self._qos_profile_best_effort = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
 
-        self._wkb.drop()
+        self._init_collection()
 
-        self.load_collections()
+    def _import_msg_type(self, type_str):
+            pkg, _, name = type_str.partition("/msg/")
+            module = importlib.import_module(f"{pkg}.msg")
+            return getattr(module, name)
 
-        self.load_configs()
+    def _init_collection(self):
+        with open(self.config_file, "r") as file:
+            config = yaml.safe_load(file)
 
-        self.load_areas()
+        self._id_fields = {}
+        self._subscribers = {}
+        self._frame_map = {}
 
-        self.configure_save()
+        for frame_name, frame_config in config["frames"].items():
+            id_field = frame_config["id_field"]
 
-        self.publish_timer = self.create_timer(1.0, self.write_history)
+            self._know_base.create_frame(frame_name, frame_config)
 
-        # QUICK FIX for Bjoern
-        self.expire_timer = self.create_timer(10.0, self.platform_expire)
+            for topic_name, topic_config in frame_config["topics"].items():
+                topic = topic_config["topic"]
+                msg_type_str = topic_config["msg_type"]
 
-    def load_collections(self):
-        config_dir = os.path.join(self._params_dir, "config")
-        collections_file = os.path.join(config_dir, "collections.json")
+                self._frame_map[topic] = frame_name
+                self._id_fields[topic] = id_field
 
-        with open(collections_file, "r") as file:
-            collections = json.load(file)
+                msg_type = self._import_msg_type(msg_type_str)
+                callback = functools.partial(self._collect_callback, topic, topic_name)
 
-        for name in collections:
-            self._wkb.create_collection(name)
+                qos = topic_config.get("qos_profile", "reliable")
 
-    def load_configs(self):
-        config_dir = os.path.join(self._params_dir, "config")
+                if qos == "best_effort":
+                    qos_profile = self._qos_profile_best_effort
+                elif qos == "reliable":
+                    qos_profile = self._qos_profile_reliable
 
-        for config_file in os.listdir(config_dir):
-            if config_file.endswith("_config.json"):
-                collection_name = config_file.replace(".json", "")
-                file_path = os.path.join(config_dir, config_file)
+                self._subscribers[topic] = self.create_subscription(
+                    msg_type,
+                    topic,
+                    callback,
+                    qos_profile
+                )
 
-                with open(file_path, 'r') as file:
-                    configs = json.load(file)
-
-                for config in configs:
-                    self._wkb.insert(collection_name, "$", entity=config)
-
-    def configure_save(self):
-        bsave = self._wkb.query("know_config","$.[0].save")
-        if bsave:
-            self.bsave = bsave[0]
-        interval = self._wkb.query("know_config","$.[0].interval")
-        if interval:
-            self.interval = int(interval[0])
-        filename = self._wkb.query("know_config","$.[0].file")
-        if filename:
-            self.filename = filename[0]
-
-        if self.bsave == "true":
-            print(f"saving knowledge base every {str(self.interval)}s to {self.filename}")
-            self.publish_timer = self.create_timer(self.interval, self.save)
-
-    def save(self):
-        self._wkb.save(self.filename)
-
-    def search_mission_callback(self, msg):
-        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
-        unique_val = str(msg_dict['team_id'])
-        val_exists = self._wkb.exists('mission', '$[?(@.team_id=="' + unique_val + '")]')
-        if not val_exists:
-            self._wkb.insert('mission', '$', msg_dict)
-        else:
-            self._wkb.update('mission','$[?(@.team_id=="' + unique_val + '")]', msg_dict)
-        return
-
-    def platform_capabilities_callback(self, msg):
-        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
-        unique_val = str(msg_dict['platform_id'])
-        val_exists = self._wkb.exists('capabilities', '$[?(@.platform_id=="' + unique_val + '")]')
-        if not val_exists:
-            self._wkb.insert('capabilities', '$', msg_dict)
-        else:
-            self._wkb.update('capabilities','$[?(@.platform_id=="' + unique_val + '")]', msg_dict)
-        return
-
-    def drone_state_callback(self, msg):
-        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
-        unique_val = 'platform_id'
-        path = '$[?(@.' + unique_val + '=="' + str(msg_dict[unique_val]) + '")]'
-        self._wkb.upsert('platform', path, msg_dict)
-
-    def object_knowledge_callback(self, msg):
-        msg_dict = rosidl_runtime_py.convert.message_to_ordereddict(msg)
-        unique_val = str(msg_dict['id'])
-        val_exists = self._wkb.exists('object', '$[?(@.id=="' + unique_val + '")]')
-        if not val_exists:
-            self._wkb.insert('object', '$', msg_dict)
-        else:
-            self._wkb.update('object','$[?(@.id=="' + unique_val + '")]', msg_dict)
-        return
-
-    def write_history(self):
-        answer = self._wkb.query('platform', '$')
-        if not answer:
-            return
-        try:
-            json_str = answer[0].replace("'", '"')
-            platforms = json.loads(json_str)
-        except (json.JSONDecodeError, TypeError):
-            print('error: malformed platform entity')
-            return
-        for platform in platforms:
-            if 'platform_id' in platform:
-                platform_id = platform['platform_id']
-                if not self._wkb.exists('platform_history', '$[*].' + platform_id):
-                    self._wkb.insert('platform_history', '$', {platform_id:[]})
-                self._wkb.insert('platform_history', '$[*].' + platform_id, platform)
-
-    def load_areas(self):
-        file_path = os.path.join(self._params_dir, 'geographic', 'areas', 'areas.json')
-        with open(file_path, 'r') as file:
-            areas_json = json.load(file)
-
-        self._wkb.update('area', '$', [])
-
-        for area in areas_json:
-            self._wkb.insert('area', '$', area)
-
-    # QUICK FIX for Bjoern
-    def platform_expire(self):
-        answer = self._wkb.query('platform', '$')
-        if not answer:
-            return
-        try:
-            json_str = answer[0].replace("'", '"')
-            platforms = json.loads(json_str)
-        except (json.JSONDecodeError, TypeError):
-            print('error: malformed platform entity')
-            return
-        for platform in platforms:
-            if 'platform_id' in platform:
-                platform_id = platform['platform_id']
-                last_update_secs = int(platform['header']['stamp']['sec'])
-                current_secs = self.get_clock().now().seconds_nanoseconds()[0]
-                if current_secs - last_update_secs > 50:
-                    print("platform " + platform_id + " expired.")
-                    self._wkb.delete('platform','$[?(@.platform_id=="' + platform_id + '")]')
+    def _collect_callback(self, topic, topic_name, msg):
+        msg_dict = message_to_ordereddict(msg)
+        id_field = self._id_fields[topic]
+        id = str(msg_dict[id_field])
+        frame = self._frame_map[topic]
+        self._know_base.upsert_subframe(frame, id, topic_name, msg_dict)
