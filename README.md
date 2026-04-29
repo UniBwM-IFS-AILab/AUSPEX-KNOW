@@ -1,8 +1,9 @@
 # AUSPEX-KNOW
-A **Know**ledge base for all ***AUSPEX*** modules.
+A **Know**ledge base for multi-UAV decision-making frameworks.
 
-For detailed instructions see the main repository ***[AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX)***.
-To cite ***AUSPEX-KNOW***, please use the following reference:
+For detailed installation and setup instructions of the complete framework, see the main repository **[AUSPEX](https://github.com/UniBwM-IFS-AILab/AUSPEX)**.
+
+To cite **AUSPEX-KNOW**, please use the following reference:
 ```
 @article{10.3389/frobt.2025.1583479,
    AUTHOR={D{\"o}schl, Bj{\"o}rn  and Sommer, Kai  and Kiam, Jane Jean },
@@ -18,7 +19,7 @@ To cite ***AUSPEX-KNOW***, please use the following reference:
 
 # Docker Container
 
-Start the docker container ***[AUSPEX-VASA](https://github.com/UniBwM-IFS-AILab/AUSPEX-VASA)*** via:
+Start the docker container **[AUSPEX-VASA](https://github.com/UniBwM-IFS-AILab/AUSPEX-VASA)** via:
 ```
 vasa_shell
 ```
@@ -29,11 +30,11 @@ vasa_shell
 
 # Build
 
-To build ***AUSPEX-KNOW*** you can use colcon build or the predefined alias:
+To build **AUSPEX-KNOW** you can use colcon build or the predefined alias:
 ```
 know_build
 ```
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.
 
 # Run
 
@@ -41,14 +42,14 @@ First run valkey server:
 ```
 valkey_run
 ```
-Then run ***AUSPEX-KNOW*** via:
+Then run **AUSPEX-KNOW** via:
 ```
 know_run
 ```
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.
 
 # Example data
 
 For example data, you can use the mock publishers in the *AUSPEX-KNOW\src\auspex_knowledge\auspex_knowledge\mock* folder.
 
-> **_NOTE:_** This has to be done inside the ***AUSPEX-VASA*** docker container.
+> **NOTE:** This has to be done inside the **AUSPEX-VASA** docker container.
