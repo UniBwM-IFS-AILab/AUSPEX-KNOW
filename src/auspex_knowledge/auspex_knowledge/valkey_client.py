@@ -21,100 +21,100 @@ class ValkeyClient:
             print("error: failed to connect to valkey")
             return
 
-    def exists(self, namespace, key):
+    def exists(self, key):
         try:
-            ret = self._redis_client.exists(f"{namespace}:{key}")
+            ret = self._redis_client.exists(key)
             return ret == 1
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}")
+            print("error: ", response_error, key)
             return False
 
-    def expire(self, namespace, key, ttl):
+    def expire(self, key, ttl):
         try:
-            ret = self._redis_client.expire(f"{namespace}:{key}", ttl)
+            ret = self._redis_client.expire(key, ttl)
             return ret == 1
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}")
+            print("error: ", response_error, key)
             return False
 
-    def set(self, namespace, key, value):
+    def set(self, key, value):
         try:
-            self._redis_client.set(f"{namespace}:{key}", value)
+            self._redis_client.set(key, value)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", value)
+            print("error: ", response_error, key, value)
             return False
 
-    def get(self, namespace, key):
+    def get(self, key):
         try:
-            return self._redis_client.get(f"{namespace}:{key}")
+            return self._redis_client.get(key)
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}")
+            print("error: ", response_error, key)
             return None
 
-    def delete(self, namespace, key):
+    def delete(self, key):
         try:
-            self._redis_client.delete(f"{namespace}:{key}")
+            self._redis_client.delete(key)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}")
+            print("error: ", response_error, key)
             return False
 
-    def arrappend(self, namespace, key, path, entity):
+    def arrappend(self, key, path, entity):
         try:
-            self._redis_client.json().arrappend(f"{namespace}:{key}", path, entity)
+            self._redis_client.json().arrappend(key, path, entity)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", path, entity)
+            print("error: ", response_error, key, path, entity)
             return False
 
-    def jsonget(self, namespace, key, path):
+    def jsonget(self, key, path):
         try:
-            result = self._redis_client.json().get(f"{namespace}:{key}", path)
+            result = self._redis_client.json().get(key, path)
             if isinstance(result, list) and path == "$":
                 return result[0] if result else None
             return result
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", path)
+            print("error: ", response_error, key, path)
             return None
 
-    def jsonset(self, namespace, key, path, value):
+    def jsonset(self, key, path, value):
         try:
-            self._redis_client.json().set(f"{namespace}:{key}", path, value)
+            self._redis_client.json().set(key, path, value)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", path, value)
+            print("error: ", response_error, key, path, value)
             return False
 
-    def jsondelete(self, namespace, key, path):
+    def jsondelete(self, key, path):
         try:
-            self._redis_client.json().delete(f"{namespace}:{key}", path)
+            self._redis_client.json().delete(key, path)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", path)
+            print("error: ", response_error, key, path)
             return False
 
-    def sadd(self, namespace, key, value):
+    def sadd(self, key, value):
         try:
-            self._redis_client.sadd(f"{namespace}:{key}", value)
+            self._redis_client.sadd(key, value)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", value)
+            print("error: ", response_error, key, value)
             return False
 
-    def smembers(self, namespace, key):
+    def smembers(self, key):
         try:
-            return self._redis_client.smembers(f"{namespace}:{key}")
+            return self._redis_client.smembers(key)
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}")
+            print("error: ", response_error, key)
             return set()
 
-    def srem(self, namespace, key, value):
+    def srem(self, key, value):
         try:
-            self._redis_client.srem(f"{namespace}:{key}", value)
+            self._redis_client.srem(key, value)
             return True
         except redis.ResponseError as response_error:
-            print("error: ", response_error, f"{namespace}:{key}", value)
+            print("error: ", response_error, key, value)
             return False
 
     def hset(self, namespace, key, value):
@@ -148,6 +148,28 @@ class ValkeyClient:
         except redis.ResponseError as response_error:
             print("error: ", response_error, namespace, key)
             return False
+
+    def xadd(self, key, fields, stream_id="*"):
+        try:
+            self._redis_client.xadd(key, fields, id=stream_id)
+            return True
+        except redis.ResponseError as response_error:
+            print("error: ", response_error, key, fields, stream_id)
+            return False
+
+    def xrange(self, key, start="-", end="+", count=None):
+        try:
+            return self._redis_client.xrange(key, min=start, max=end, count=count)
+        except redis.ResponseError as response_error:
+            print("error: ", response_error, key, start, end)
+            return []
+
+    def xrevrange(self, key, start="+", end="-", count=None):
+        try:
+            return self._redis_client.xrevrange(key, max=start, min=end, count=count)
+        except redis.ResponseError as response_error:
+            print("error: ", response_error, key, start, end)
+            return []
 
     def scan_keys(self, pattern):
         try:

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import json
 import random
 
+from auspex_knowledge.knowledge_key import KnowledgeKey
 from auspex_knowledge.valkey_client import ValkeyClient
 
 
@@ -11,113 +13,124 @@ class KnowledgeBase():
     def create_frame(self, frame, frame_schema):
         for topic_name, topic_config in frame_schema["topics"].items():
             for property_name, value in topic_config.items():
-                namespace = f"schema:{frame}:{topic_name}"
-                self._valkey.set(namespace, property_name, str(value))
+                self._valkey.set(KnowledgeKey.schema(frame, topic_name, property_name), str(value))
 
     def exists_instance(self, frame, instance_id):
         return instance_id in self.get_instances(frame)
 
     def get_instances(self, frame):
-        return self._valkey.smembers(frame, "instances")
+        return self._valkey.smembers(KnowledgeKey.instances(frame))
 
     def delete_instance(self, frame, instance_id):
-        keys = self._valkey.scan_keys(f"{frame}:{instance_id}:*")
-
-        for full_key in keys:
-            namespace, subkey = full_key.split(":", 1)
-            self._valkey.delete(namespace, subkey)
-
-        self._valkey.srem(frame, "instances", instance_id)
-
+        subframes = self._valkey.smembers(KnowledgeKey.subframes(frame, instance_id))
+        for subframe in subframes:
+            variants = self._valkey.smembers(KnowledgeKey.variants(frame, instance_id, subframe))
+            for variant in variants:
+                self.delete_subframe(frame, instance_id, subframe, variant)
+        self._valkey.delete(KnowledgeKey.subframes(frame, instance_id))
+        self._valkey.srem(KnowledgeKey.instances(frame), instance_id)
         return True
 
     def get_variants(self, frame, instance_id, subframe):
-        return self._valkey.smembers(f"{frame}:{instance_id}:{subframe}", "variants")
-
-    def get_subframe(self, frame, instance_id, subframe, variant="main"):
-        return self._valkey.jsonget(frame, f"{instance_id}:{subframe}:{variant}", "$")
-
-    def get_subframe_schema(self, frame, subframe):
-        mode = self._valkey.get(f"schema:{frame}:{subframe}", "mode") or "single"
-        variant_key = self._valkey.get(f"schema:{frame}:{subframe}", "variant_key") or None
-        ttl_raw = self._valkey.get(f"schema:{frame}:{subframe}", "ttl")
-        ttl = int(ttl_raw) if ttl_raw not in (None, "") else 0
-        return {"mode": mode, "variant_key": variant_key, "ttl": ttl}
-
-    def get_variant(self, schema, item=None):
-        if schema["mode"] == "multiple" and item is not None:
-            return item.get(schema["variant_key"]) or "unknown_variant"
-        return "main"
+        return self._valkey.smembers(KnowledgeKey.variants(frame, instance_id, subframe))
 
     def upsert_subframe(self, frame, instance_id, subframe, item):
-        schema = self.get_subframe_schema(frame, subframe)
-        variant = self.get_variant(schema, item)
+        variant = self._get_variant(frame, subframe, item)
 
-        success = self._valkey.jsonset(frame, f"{instance_id}:{subframe}:{variant}", "$", item)
+        self._valkey.sadd(KnowledgeKey.instances(frame), instance_id)
+        self._valkey.sadd(KnowledgeKey.subframes(frame, instance_id), subframe)
+        self._valkey.sadd(KnowledgeKey.variants(frame, instance_id, subframe), variant)
 
-        ttl = schema["ttl"]
-        if ttl:
-            self._valkey.expire(frame, f"{instance_id}:{subframe}:{variant}", ttl)
-
-        self._valkey.sadd(frame, "instances", instance_id)
-        self._valkey.sadd(f"{frame}:{instance_id}:{subframe}", "variants", variant)
+        history = self._get_schema_history(frame, subframe)
+        stamp = item.get("header", {}).get("stamp", {}) if history > 0 else {}
 
         slot_items = self._extract_slots(item)
         for slot, value in slot_items:
+            self._valkey.sadd(KnowledgeKey.slots(frame, instance_id, subframe), slot)
             self.set_slot(frame, instance_id, subframe, slot, value, variant=variant)
+            if history > 0:
+                self._write_history(frame, instance_id, subframe, slot, variant, value, stamp)
 
-        return success
+        return True
 
-    def delete_subframe(self, frame, instance_id, subframe, variant="main"):
-        schema = self.get_subframe_schema(frame, subframe)
-        mode = schema["mode"]
-        if mode == "single":
-            variant = "main"
-        elif mode != "multiple":
-            return False
+    def delete_subframe(self, frame, instance_id, subframe, variant=KnowledgeKey.DEFAULT_VARIANT):
+        slots = self._valkey.smembers(KnowledgeKey.slots(frame, instance_id, subframe))
+        for slot in slots:
+            self._valkey.delete(KnowledgeKey.slot(frame, instance_id, subframe, slot, variant))
 
-        success = self._valkey.jsondelete(frame, f"{instance_id}:{subframe}:{variant}", "$")
-        self._valkey.srem(f"{frame}:{instance_id}:{subframe}", "variants", variant)
-
-        slot_keys = self._valkey.scan_keys(f"{frame}:{instance_id}:{subframe}:*:{variant}")
-        for full_key in slot_keys:
-            namespace, subkey = full_key.split(":", 1)
-            self._valkey.delete(namespace, subkey)
+        self._valkey.srem(KnowledgeKey.variants(frame, instance_id, subframe), variant)
 
         if not self.get_variants(frame, instance_id, subframe):
-            self._valkey.delete(f"{frame}:{instance_id}:{subframe}", "variants")
+            self._valkey.delete(KnowledgeKey.variants(frame, instance_id, subframe))
+            self._valkey.delete(KnowledgeKey.slots(frame, instance_id, subframe))
+            self._valkey.srem(KnowledgeKey.subframes(frame, instance_id), subframe)
+
+        return True
+
+    def _register_slot(self, frame, instance_id, subframe, slot, variant):
+        self._valkey.sadd(KnowledgeKey.instances(frame), instance_id)
+        self._valkey.sadd(KnowledgeKey.subframes(frame, instance_id), subframe)
+        self._valkey.sadd(KnowledgeKey.variants(frame, instance_id, subframe), variant)
+        self._valkey.sadd(KnowledgeKey.slots(frame, instance_id, subframe), slot)
+
+    def set_slot(self, frame, instance_id, subframe, slot, value, path="$", variant=KnowledgeKey.DEFAULT_VARIANT):
+        self._register_slot(frame, instance_id, subframe, slot, variant)
+
+        key = KnowledgeKey.slot(frame, instance_id, subframe, slot, variant)
+        old_val = self._valkey.jsonget(key, path)
+        success = True
+        if old_val != value:
+            success = self._valkey.jsonset(key, path, value)
+
+        ttl = self._get_ttl(frame, subframe)
+        if ttl:
+            self._valkey.expire(key, ttl)
 
         return success
 
-    def read_subframe(self, frame, instance_id, subframe, path):
-        namespace = f"{instance_id}:{subframe}"
-        json_path = "$." + path
+    def _write_history(self, frame, instance_id, subframe, slot, variant, value, stamp):
+        stream_id = self._stamp_to_stream_id(stamp)
+        key = KnowledgeKey.slot_history(frame, instance_id, subframe, slot, variant)
+        return self._valkey.xadd(key, self._serialize_entry(value), stream_id)
 
-        result_dict = {}
-        variants = self.get_variants(frame, instance_id, subframe)
+    def read_history(self, frame, instance_id, subframe, slot, variant=KnowledgeKey.DEFAULT_VARIANT, start="-", end="+", count=None):
+        key = KnowledgeKey.slot_history(frame, instance_id, subframe, slot, variant)
+        entries = self._valkey.xrange(key, start, end, count) or []
 
-        for variant in variants:
-            result = self._valkey.jsonget(frame, f"{namespace}:{variant}", json_path)
-            result_dict[variant] = result
+        return [
+            {
+                "stamp": self._stream_id_to_stamp(stream_id),
+                "value": self._deserialize_entry(fields).get("value"),
+            }
+            for stream_id, fields in entries
+        ]
 
-        return result_dict
+    def read_history_at_stamp(self, frame, instance_id, subframe, slot, stamp, variant=KnowledgeKey.DEFAULT_VARIANT):
+        key = KnowledgeKey.slot_history(frame, instance_id, subframe, slot, variant)
 
-    def set_slot(self, frame, instance_id, subframe, slot, value, path="$", variant="main"):
-        self._valkey.sadd(frame, "instances", instance_id)
-        self._valkey.sadd(f"{frame}:{instance_id}:{subframe}", "variants", variant)
+        stream_id = self._stamp_to_stream_id(stamp)
+        if not stream_id or "*" in stream_id:
+            return {}
 
-        key = f"{instance_id}:{subframe}:{slot}:{variant}"
-        success = self._valkey.jsonset(frame, key, path, value)
-        self._refresh_ttl(frame, instance_id, subframe, slot, variant)
-        return success
+        entries = self._valkey.xrevrange(key, stream_id, "-", count=1)
+
+        if not entries:
+            return {}
+
+        stream_id, fields = entries[0]
+
+        return {
+            "stamp": self._stream_id_to_stamp(stream_id),
+            "value": self._deserialize_entry(fields).get("value"),
+        }
 
     def read_slot_variants(self, frame, instance_id, subframe, slot):
         result_dict = {}
         variants = self.get_variants(frame, instance_id, subframe)
 
         for variant in variants:
-            key = f"{instance_id}:{subframe}:{slot}:{variant}"
-            result = self._valkey.jsonget(frame, key, "$")
+            key = KnowledgeKey.slot(frame, instance_id, subframe, slot, variant)
+            result = self._valkey.jsonget(key, "$")
             result_dict[variant] = result
 
         return result_dict
@@ -125,42 +138,45 @@ class KnowledgeBase():
     def read_slot(self, frame, instance_id, subframe, slot):
         variants = self.get_variants(frame, instance_id, subframe)
         if not variants:
-            self.set_slot(frame, instance_id, subframe, slot, None, variant="main")
+            self.set_slot(frame, instance_id, subframe, slot, None, variant=KnowledgeKey.DEFAULT_VARIANT)
             return None
 
-        if "main" not in variants:
-            chosen_variant = random.choice(variants)
+        if KnowledgeKey.DEFAULT_VARIANT not in variants:
+            chosen_variant = random.choice(list(variants))
         else:
-            chosen_variant = "main"
+            chosen_variant = KnowledgeKey.DEFAULT_VARIANT
 
-        key = f"{instance_id}:{subframe}:{slot}:{chosen_variant}"
-        result = self._valkey.jsonget(frame, key, "$")
+        key = KnowledgeKey.slot(frame, instance_id, subframe, slot, chosen_variant)
+        result = self._valkey.jsonget(key, "$")
         return result
 
-    def delete_slot(self, frame, instance_id, subframe, slot, variant="main"):
-        key = f"{instance_id}:{subframe}:{slot}:{variant}"
-        success = self._valkey.jsondelete(frame, key, "$")
+    def delete_slot(self, frame, instance_id, subframe, slot, variant=KnowledgeKey.DEFAULT_VARIANT):
+        key = KnowledgeKey.slot(frame, instance_id, subframe, slot, variant)
+        success = self._valkey.delete(key)
         return success
+
+    def get_instance_json(self, frame, instance_id):
+        result = {}
+        subframes = self._valkey.smembers(KnowledgeKey.subframes(frame, instance_id))
+
+        for subframe in subframes:
+            result[subframe] = {}
+            slots = self._valkey.smembers(KnowledgeKey.slots(frame, instance_id, subframe))
+
+            for slot in slots:
+                key = KnowledgeKey.slot(frame, instance_id, subframe, slot, KnowledgeKey.DEFAULT_VARIANT)
+                value = self._valkey.jsonget(key, "$")
+                result[subframe][slot] = value
+
+        return result
 
     def expire_callback(self, key):
         parts = key.split(":")
 
-        if len(parts) != 4:
+        if len(parts) != 5:
             return
 
-        frame, instance_id, subframe, variant = parts
-
-        self._valkey.srem(f"{frame}:{instance_id}:{subframe}", "variants", variant)
-
-        slot_keys = self._valkey.scan_keys(f"{frame}:{instance_id}:{subframe}:*:{variant}")
-        for full_key in slot_keys:
-            namespace, subkey = full_key.split(":", 1)
-            self._valkey.delete(namespace, subkey)
-
-        remaining_variants = self.get_variants(frame, instance_id, subframe)
-
-        if not remaining_variants:
-            self._valkey.delete(f"{frame}:{instance_id}:{subframe}", "variants")
+        self._valkey.delete(key)
 
     def set_fluent(self, fluent, instance, value):
         success = self._valkey.hset(f"fluent:{fluent}", instance, str(value))
@@ -201,43 +217,66 @@ class KnowledgeBase():
     def get_memory_usage(self):
         return self._valkey.get_memory_usage()
 
-    def save(self, filename):
-        self._valkey.save(filename)
-
     def drop(self):
         self._valkey.drop()
+
+    def _get_ttl(self, frame, subframe):
+        ttl_raw = self._valkey.get(KnowledgeKey.schema(frame, subframe, "ttl"))
+        ttl = int(ttl_raw) if ttl_raw not in (None, "") else 0
+        return ttl
+
+    def _get_variant(self, frame, subframe, item=None):
+        mode = self._valkey.get(KnowledgeKey.schema(frame, subframe, "mode")) or "single"
+        if mode == "multiple" and item is not None:
+            variant_key = self._valkey.get(KnowledgeKey.schema(frame, subframe, "variant_key")) or None
+            if not variant_key:
+                return KnowledgeKey.DEFAULT_VARIANT
+            return item.get(variant_key) or KnowledgeKey.DEFAULT_VARIANT
+        return KnowledgeKey.DEFAULT_VARIANT
+
+    def _get_schema_history(self, frame, subframe):
+        history_str = self._valkey.get(KnowledgeKey.schema(frame, subframe, "history"))
+        history = int(history_str) if history_str not in (None, "") else 0
+        return history
 
     def _extract_slots(self, obj):
         if not isinstance(obj, dict):
             return []
         return list(obj.items())
 
-    def _refresh_ttl(self, frame, instance_id, subframe, slot, variant):
-        ttl_raw = self._valkey.get(f"schema:{frame}:{subframe}", "ttl")
-        ttl = int(ttl_raw) if ttl_raw not in (None, "") else 0
-        if ttl:
-            self._valkey.expire(frame, f"{instance_id}:{subframe}:{slot}:{variant}", ttl)
+    def _stamp_to_stream_id(self, stamp):
+        sec = stamp.get("sec")
+        nanosec = stamp.get("nanosec")
 
-    def get_instance_json(self, frame, instance_id):
-        result = {}
-        instance_keys = self._valkey.scan_keys(f"{frame}:{instance_id}:*")
-        for key in instance_keys:
-            try:
-                if key.endswith(":variants"):
-                    continue
-                _, path = key.split(":", 1)
-                parts = path.split(":")
-                if len(parts) != 4:
-                    continue
-                _, subframe, slot, variant = parts
-                if subframe not in result:
-                    result[subframe] = {}
+        if sec is None or nanosec is None:
+            return "*"
 
-                # TODO Use read slot here and always read main variant
-                value = self._valkey.jsonget(frame, path, "$")
+        millis = sec * 1000 + nanosec // 1_000_000
+        sequence = nanosec % 1_000_000
 
-                result[subframe][slot] = value
-            except ValueError:
-                continue
+        return f"{millis}-{sequence}"
 
-        return result
+    def _stream_id_to_stamp(self, stream_id):
+        millis_str, sequence_str = stream_id.split("-", 1)
+
+        millis = int(millis_str)
+        sequence = int(sequence_str)
+
+        return {
+            "sec": millis // 1000,
+            "nanosec": (millis % 1000) * 1_000_000 + sequence,
+        }
+
+    def _serialize_entry(self, value):
+        try:
+            return {"value": json.dumps(value)}
+        except TypeError:
+            return {"value": str(value)}
+
+    def _deserialize_entry(self, fields):
+        raw = fields.get("value")
+
+        try:
+            return {"value": json.loads(raw)}
+        except (TypeError, json.JSONDecodeError):
+            return {"value": raw}

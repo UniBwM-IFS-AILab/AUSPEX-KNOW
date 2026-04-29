@@ -2,6 +2,7 @@
 import os
 
 from auspex_knowledge.knowledge_base import KnowledgeBase
+from auspex_knowledge.knowledge_key import KnowledgeKey
 
 def get_db_ip():
     return os.getenv("AUSPEX_DB_IP", "127.0.0.1")
@@ -14,20 +15,20 @@ class KnowledgeClient:
         value = self._know_base.read_slot(frame, instance_id, subframe, slot)
         return value
 
-    def set_slot(self, frame, instance_id, subframe, slot, value, path="$", variant="main"):
+    def set_slot(self, frame, instance_id, subframe, slot, value, path="$", variant=KnowledgeKey.DEFAULT_VARIANT):
         return self._know_base.set_slot(frame, instance_id, subframe, slot, value, path, variant)
 
-    def delete_slot(self, frame, instance_id, subframe, slot, variant="main"):
+    def delete_slot(self, frame, instance_id, subframe, slot, variant=KnowledgeKey.DEFAULT_VARIANT):
         return self._know_base.delete_slot(frame, instance_id, subframe, slot, variant)
 
     def upsert_subframe(self, frame, instance_id, subframe, item):
         return self._know_base.upsert_subframe(frame, instance_id, subframe, item)
 
-    def delete_subframe(self, frame, instance_id, subframe, variant="main"):
+    def delete_subframe(self, frame, instance_id, subframe, variant=KnowledgeKey.DEFAULT_VARIANT):
         return self._know_base.delete_subframe(frame, instance_id, subframe, variant)
 
     def get_instance_ids(self, frame):
-         return self._know_base.get_instances(frame)
+        return self._know_base.get_instances(frame)
 
     def get_instance(self, frame, instance_id):
         return self._know_base.get_instance_json(frame, instance_id)

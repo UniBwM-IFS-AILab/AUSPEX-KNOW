@@ -8,6 +8,7 @@ frames:
         msg_type: "auspex_msgs/msg/PlatformState"
         ttl: 10
         qos_profile: "best_effort"
+        history: 1000
       platform_capabilities:
         mode: "single"
         topic: "/platform_capabilities"

@@ -10,6 +10,7 @@ from auspex_msgs.srv import FindInstanceIds, FindInstances
 from auspex_msgs.srv import DeleteInstance, DeleteInstances, DeleteAllInstances
 
 from auspex_knowledge.knowledge_client import KnowledgeClient
+from auspex_knowledge.knowledge_key import KnowledgeKey
 
 class KnowledgeServer(Node):
     def __init__(self):
@@ -38,7 +39,7 @@ class KnowledgeServer(Node):
         try:
             value = json.dumps(self._know_client.read_slot(frame, instance_id, subframe, slot))
         except TypeError:
-            response.value = None
+            response.value = ""
             print("read_slot: invalid JSON.")
             return response
 
@@ -55,7 +56,7 @@ class KnowledgeServer(Node):
         variant = request.variant.strip()
 
         if not variant:
-            variant="main"
+            variant = KnowledgeKey.DEFAULT_VARIANT
 
         try:
             value = json.loads(value)
@@ -75,7 +76,7 @@ class KnowledgeServer(Node):
         variant = request.variant.strip()
 
         if not variant:
-            variant="main"
+            variant = KnowledgeKey.DEFAULT_VARIANT
 
         response.success = self._know_client.delete_slot(frame, instance_id, subframe, slot, variant)
         return response
@@ -102,7 +103,7 @@ class KnowledgeServer(Node):
         variant = request.variant.strip()
 
         if not variant:
-            variant="main"
+            variant = KnowledgeKey.DEFAULT_VARIANT
 
         response.success = self._know_client.delete_subframe(frame, instance_id, subframe, variant)
         return response
@@ -110,18 +111,18 @@ class KnowledgeServer(Node):
     def get_instance_ids(self, request, response):
         frame = request.frame
 
-        response.instance_ids= self._know_client.get_instance_ids(frame)
+        response.instance_ids = self._know_client.get_instance_ids(frame)
         return response
 
     def get_instance(self, request, response):
         frame = request.frame
         instance_id = request.instance_id
-        instance =  self._know_client.get_instance(frame, instance_id)
+        instance = self._know_client.get_instance(frame, instance_id)
 
         try:
             instance = json.dumps(instance)
         except TypeError:
-            response.instance = None
+            response.instance = "{}"
             print("get_instance: invalid JSON.")
             return response
 
@@ -148,7 +149,7 @@ class KnowledgeServer(Node):
         subframe = request.subframe
         slot = request.slot
         value = request.value
-        response.instance_ids =  self._know_client.find_instance_ids(frame, subframe, slot, value)
+        response.instance_ids = self._know_client.find_instance_ids(frame, subframe, slot, value)
         return response
 
     def find_instances(self, request, response):
